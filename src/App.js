@@ -7,6 +7,38 @@ const USERS = {
   // add more: "hasan": "abcd",
 };
 
+/* ===== Utils ===== */
+const GPH = 4.6;            // gallons per hour
+const FUEL_LBS_PER_GAL = 6; // lbs per gallon
+
+// Parse both "1.7" and "1,7" safely; accept numbers and strings; return 0 if invalid.
+const parseNum = (v) => {
+  if (v === null || v === undefined) return 0;
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+  const s = String(v).trim().replace(",", ".");
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
+};
+
+// Keep only digits, one decimal separator (dot or comma), and at most one leading separator
+const cleanDecimalInput = (s) => {
+  if (s === "") return s;
+  // Remove invalid chars
+  let out = s.replace(/[^\d.,]/g, "");
+  // If both '.' and ',', prefer the last typed as separator; replace the other with nothing
+  const lastSepIndex = Math.max(out.lastIndexOf(","), out.lastIndexOf("."));
+  if (lastSepIndex !== -1) {
+    const sep = out[lastSepIndex];
+    out = out
+      .replace(/[.,]/g, (m, i) => (i === lastSepIndex ? sep : ""))
+      .replace(/[,\.]{2,}/g, sep);
+  }
+  // Allow inputs like ".7" or ",7"
+  if (out.startsWith(".") || out.startsWith(",")) return out;
+  // Disallow leading zeros like "00" only cosmetically (optional). We'll leave as-is.
+  return out;
+};
+
 /* ===== 2) Login Component ===== */
 function Login({ onLogin }) {
   const [username, setUsername] = useState("");
@@ -75,14 +107,6 @@ const aircraftData = {
   "C-FTOD (C150M)": { emptyWeight: 1112.15, emptyMoment: 36577.25, emptyArm: 32.93, maxTakeoffWeight: 1599, maxUsableFuel: 135 },
 };
 
-const GPH = 4.6;            // gallons per hour
-const FUEL_LBS_PER_GAL = 6; // lbs per gallon
-
-const parseNum = (v) => {
-  const n = parseFloat(String(v).replace(",", "."));
-  return Number.isFinite(n) ? n : 0;
-};
-
 function WeightBalanceApp({ onLogout, username }) {
   const [selectedAircraft, setSelectedAircraft] = useState("C-FTPX (C150K)");
   const [studentWeight, setStudentWeight] = useState(0);
@@ -90,7 +114,9 @@ function WeightBalanceApp({ onLogout, username }) {
   const [baggage1, setBaggage1] = useState(0);
   const [baggage2, setBaggage2] = useState(0);
   const [fuelWeight, setFuelWeight] = useState(0);
-  const [flightTime, setFlightTime] = useState(0);
+
+  // NEW: keep flight time as a string so user can type "1,7" or ".7" naturally
+  const [flightTimeStr, setFlightTimeStr] = useState("");
 
   const aircraft = aircraftData[selectedAircraft];
   const momentArms = { student: 39, instructor: 39, baggage1: 64, baggage2: 95, fuel: 42.2 };
@@ -115,8 +141,11 @@ function WeightBalanceApp({ onLogout, username }) {
     setFuelWeight(Math.min(v, maxAllowedFuel));
   };
 
+  // Parse flight time only for math. Accept "1,7" or "1.7" or ".7" and clamp >= 0
+  const flightTime = Math.max(0, parseNum(flightTimeStr));
+
   // Prevent consuming more fuel than on board
-  const rawUsedFuel = parseNum(flightTime) * GPH * FUEL_LBS_PER_GAL;
+  const rawUsedFuel = flightTime * GPH * FUEL_LBS_PER_GAL;
   const actualUsedFuel = Math.min(rawUsedFuel, fuelWeight);
 
   const fuelMoment = fuelWeight * momentArms.fuel;
@@ -152,33 +181,55 @@ function WeightBalanceApp({ onLogout, username }) {
         <div className="grid-inputs">
           <div>
             <label>🧍‍♂️ Student Weight</label>
-            <input type="text" value={studentWeight || ""} onChange={(e) => setStudentWeight(parseNum(e.target.value))} />
+            <input
+              type="text"
+              value={studentWeight || ""}
+              onChange={(e) => setStudentWeight(parseNum(e.target.value))}
+            />
           </div>
           <div>
             <label>👨‍🏫 Instructor Weight</label>
-            <input type="text" value={instructorWeight || ""} onChange={(e) => setInstructorWeight(parseNum(e.target.value))} />
+            <input
+              type="text"
+              value={instructorWeight || ""}
+              onChange={(e) => setInstructorWeight(parseNum(e.target.value))}
+            />
           </div>
           <div>
             <label>🎒 Baggage Area 1</label>
-            <input type="text" value={baggage1 || ""} onChange={(e) => setBaggage1(parseNum(e.target.value))} />
+            <input
+              type="text"
+              value={baggage1 || ""}
+              onChange={(e) => setBaggage1(parseNum(e.target.value))}
+            />
           </div>
           <div>
             <label>🎒 Baggage Area 2</label>
-            <input type="text" value={baggage2 || ""} onChange={(e) => setBaggage2(parseNum(e.target.value))} />
+            <input
+              type="text"
+              value={baggage2 || ""}
+              onChange={(e) => setBaggage2(parseNum(e.target.value))}
+            />
           </div>
+
           <div>
             <label>🕓 Flight Time (hrs)</label>
             <input
               type="text"
-              value={flightTime || ""}
-              onChange={(e) => setFlightTime(parseNum(e.target.value))}
-              placeholder="e.g., 1.7 or 1,7"
+              value={flightTimeStr}
+              onChange={(e) => setFlightTimeStr(cleanDecimalInput(e.target.value))}
+              placeholder="e.g., 1.7 or 1,7 or .7"
+              inputMode="decimal"
             />
           </div>
 
           <div>
             <label>⛽ Fuel on Board (max {Math.floor(maxAllowedFuel)} lbs)</label>
-            <input type="text" value={fuelWeight || ""} onChange={(e) => handleFuelChange(e.target.value)} />
+            <input
+              type="text"
+              value={fuelWeight || ""}
+              onChange={(e) => handleFuelChange(e.target.value)}
+            />
             <button onClick={autoCalculateFuel}>Auto-calculate Fuel</button>
           </div>
         </div>
@@ -189,18 +240,39 @@ function WeightBalanceApp({ onLogout, username }) {
               <th>Description</th><th>Weight</th><th>Arm</th><th>Moment</th>
             </tr>
           </thead>
-        <tbody>
+          <tbody>
             <tr><td>EMPTY WEIGHT</td><td>{aircraft.emptyWeight}</td><td>{aircraft.emptyArm}</td><td>{aircraft.emptyMoment.toFixed(2)}</td></tr>
             <tr><td>PILOT(S)</td><td>{(studentWeight + instructorWeight).toFixed(2)}</td><td>39</td><td>{((studentWeight + instructorWeight) * 39).toFixed(2)}</td></tr>
             <tr><td>BAGGAGE 1</td><td>{baggage1}</td><td>64</td><td>{(baggage1 * 64).toFixed(2)}</td></tr>
             <tr><td>BAGGAGE 2</td><td>{baggage2}</td><td>95</td><td>{(baggage2 * 95).toFixed(2)}</td></tr>
-            <tr className="highlight"><td>ZERO FUEL WEIGHT</td><td>{zeroFuelWeight.toFixed(2)}</td><td>{(safe(zeroFuelMoment / zeroFuelWeight)).toFixed(2)}</td><td>{zeroFuelMoment.toFixed(2)}</td></tr>
+            <tr className="highlight">
+              <td>ZERO FUEL WEIGHT</td>
+              <td>{zeroFuelWeight.toFixed(2)}</td>
+              <td>{(safe(zeroFuelMoment / zeroFuelWeight)).toFixed(2)}</td>
+              <td>{zeroFuelMoment.toFixed(2)}</td>
+            </tr>
             <tr><td>FUEL ON BOARD</td><td>{fuelWeight.toFixed(2)}</td><td>42.2</td><td>{(fuelWeight * 42.2).toFixed(2)}</td></tr>
-            <tr className="highlight"><td>TAKEOFF WEIGHT</td><td>{takeoffWeight.toFixed(2)}</td><td>{(safe(takeoffMoment / takeoffWeight)).toFixed(2)}</td><td>{takeoffMoment.toFixed(2)}</td></tr>
+            <tr className="highlight">
+              <td>TAKEOFF WEIGHT</td>
+              <td>{takeoffWeight.toFixed(2)}</td>
+              <td>{(safe(takeoffMoment / takeoffWeight)).toFixed(2)}</td>
+              <td>{takeoffMoment.toFixed(2)}</td>
+            </tr>
             <tr><td>USED FUEL</td><td>{actualUsedFuel.toFixed(2)}</td><td>42.2</td><td>{(actualUsedFuel * 42.2).toFixed(2)}</td></tr>
-            <tr className="highlight"><td>LANDING WEIGHT</td><td>{landingWeight.toFixed(2)}</td><td>{(safe(landingMoment / landingWeight)).toFixed(2)}</td><td>{landingMoment.toFixed(2)}</td></tr>
+            <tr className="highlight">
+              <td>LANDING WEIGHT</td>
+              <td>{landingWeight.toFixed(2)}</td>
+              <td>{(safe(landingMoment / landingWeight)).toFixed(2)}</td>
+              <td>{landingMoment.toFixed(2)}</td>
+            </tr>
           </tbody>
         </table>
+
+        <div className="section">
+          <small>
+            Tip: You can type <code>1.7</code>, <code>1,7</code>, or <code>.7</code> for Flight Time. We’ll parse both dot and comma.
+          </small>
+        </div>
       </div>
     </div>
   );
